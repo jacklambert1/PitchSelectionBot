@@ -64,30 +64,34 @@ hitter_result_sum <- rel_data %>%
   mutate(
     launch_speed = as.numeric(launch_speed),
     launch_angle = as.numeric(launch_angle),
+    sz_bot = as.numeric(sz_bot),
+    sz_top = as.numeric(sz_top),
     zone = as.numeric(zone),
     inZone = ifelse(zone < 10, 1, 0),
     swing = ifelse(description %in% c("hit_into_play", "foul", "swinging_strike", "swinging_strike_blocked", "foul_tip", "foul_bunt", "missed_bunt", "bunt_foul_tip"), 1, 0)
   ) %>%
   filter(pitch_type_condensed %in% c("CB", "CH", "CT", "FF", "SI", "SL", "KN")) %>%
-  group_by(batter, pitch_type_condensed, p_throws) %>%
+  group_by(batter, pitch_type_condensed, p_throws, stand) %>%
   summarise(avgEV = mean(launch_speed, na.rm=TRUE),
             avgLA = mean(launch_angle, na.rm=TRUE),
             zSwingPCT = sum(swing[inZone == 1], na.rm=TRUE) / sum(inZone == 1, na.rm=TRUE),
-            oSwingPCT = sum(swing[inZone == 0], na.rm=TRUE) / sum(inZone == 0, na.rm=TRUE)
+            oSwingPCT = sum(swing[inZone == 0], na.rm=TRUE) / sum(inZone == 0, na.rm=TRUE),
+            sz_bot = mean(sz_bot, na.rm=TRUE),
+            sz_top = mean(sz_top, na.rm=TRUE)
   )
 
 hitter_count_sum <- rel_data %>%
   group_by(batter) %>%
   mutate(totalPitches = n()) %>% 
   ungroup() %>%
-  group_by(batter, pitch_type_condensed, p_throws) %>%
+  group_by(batter, pitch_type_condensed, p_throws, stand) %>%
   summarise(pitches = n(),
             totalPitches = mean(totalPitches),
             BIP = sum(description == "hit_into_play")) %>%
   filter(totalPitches > 500, pitches > 50, BIP > 10)
 
-hitter_total_sum <- merge(hitter_count_sum, hitter_result_sum, by=c("batter", "pitch_type_condensed", "p_throws"))
-hitter_total_sum <- hitter_total_sum %>% select(batter, pitch_type_condensed, p_throws, avgEV, avgLA, zSwingPCT, oSwingPCT)
+hitter_total_sum <- merge(hitter_count_sum, hitter_result_sum, by=c("batter", "pitch_type_condensed", "p_throws", "stand"))
+hitter_total_sum <- hitter_total_sum %>% select(batter, pitch_type_condensed, p_throws, stand, avgEV, avgLA, zSwingPCT, oSwingPCT, sz_bot, sz_top)
 
 model_data <- merge(model_data, hitter_total_sum, by=c("batter", "p_throws", "pitch_type_condensed"), all.x=TRUE)
 
@@ -95,6 +99,8 @@ generic_hitter_sum <- rel_data %>%
   mutate(
     launch_speed = as.numeric(launch_speed),
     launch_angle = as.numeric(launch_angle),
+    sz_bot = as.numeric(sz_bot),
+    sz_top = as.numeric(sz_top),
     zone = as.numeric(zone),
     inZone = ifelse(zone < 10, 1, 0),
     swing = ifelse(description %in% c("hit_into_play", "foul", "swinging_strike", "swinging_strike_blocked", "foul_tip", "foul_bunt", "missed_bunt", "bunt_foul_tip"), 1, 0)
@@ -104,7 +110,9 @@ generic_hitter_sum <- rel_data %>%
   summarise(avgEV = mean(launch_speed, na.rm=TRUE),
             avgLA = mean(launch_angle, na.rm=TRUE),
             zSwingPCT = sum(swing[inZone == 1], na.rm=TRUE) / sum(inZone == 1, na.rm=TRUE),
-            oSwingPCT = sum(swing[inZone == 0], na.rm=TRUE) / sum(inZone == 0, na.rm=TRUE)
+            oSwingPCT = sum(swing[inZone == 0], na.rm=TRUE) / sum(inZone == 0, na.rm=TRUE),
+            sz_bot = mean(sz_bot, na.rm=TRUE),
+            sz_top = mean(sz_top, na.rm=TRUE)
   )
 
 filled_model_data <- model_data %>% filter(!is.na(avgEV))
@@ -125,7 +133,7 @@ pitcher_movement_sum <- rvs %>%
     pfx_z = as.numeric(pfx_z)
   ) %>%
   filter(pitch_type_condensed %in% c("CB", "CH", "CT", "FF", "SI", "SL", "KN")) %>% 
-  group_by(pitcher, pitch_type_condensed) %>%
+  group_by(pitcher, pitch_type_condensed, p_throws) %>%
   summarise(avgVelo = mean(release_speed, na.rm=TRUE),
             avgRPX = mean(release_pos_x, na.rm=TRUE),
             avgRPZ = mean(release_pos_z, na.rm=TRUE),
@@ -151,31 +159,6 @@ pitcher_usage_sum <- rel_data %>%
   filter(totalPitches > 500 & usagePCT > 0.03)
 
 pitcher_total_sum <- merge(pitcher_usage_sum, pitcher_movement_sum, by=c("pitcher", "pitch_type_condensed"))
-
-generic_pitcher_sum <- rel_data %>%
-  mutate(
-    release_speed = as.numeric(release_speed),
-    release_pos_x = as.numeric(release_pos_x),
-    release_pos_y = as.numeric(release_pos_y),
-    release_pos_z = as.numeric(release_pos_z),
-    pfx_x = as.numeric(pfx_x),
-    pfx_z = as.numeric(pfx_z)
-  ) %>%
-  filter(pitch_type_condensed %in% c("CB", "CH", "CT", "FF", "SI", "SL", "KN")) %>% 
-  group_by(p_throws, pitch_type_condensed) %>%
-  summarise(avgVelo = mean(release_speed, na.rm=TRUE),
-            avgRPX = mean(release_pos_x, na.rm=TRUE),
-            avgRPZ = mean(release_pos_z, na.rm=TRUE),
-            avgRPY = mean(release_pos_y, na.rm=TRUE),
-            avgHBRK = mean(pfx_x, na.rm=TRUE),
-            avgVBRK = mean(pfx_z, na.rm=TRUE),
-            sdVelo = sd(release_speed, na.rm=TRUE),
-            sdRPX = sd(release_pos_x, na.rm=TRUE),
-            sdRPZ = sd(release_pos_z, na.rm=TRUE),
-            sdRPY = sd(release_pos_y, na.rm=TRUE),
-            sdHBRK = sd(pfx_x, na.rm=TRUE),
-            sdVBRK = sd(pfx_z, na.rm=TRUE)
-  )
 
 write.csv(all_model_data, "C:/Users/15139/Downloads/model_data.csv")
 write.csv(re_matrix, "C:/Users/15139/Downloads/re288.csv")
